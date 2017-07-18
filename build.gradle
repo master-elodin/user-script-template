@@ -1,0 +1,182 @@
+def scriptProperties = [
+    name: "my-project",
+    version: "0.0.1",
+    author: "Your Name",
+    description: "This is what your script does!",
+    // target is what Tampermonkey uses to decide which pages to run on
+    target: "/regex for the targeted site/",
+    externalDependencies: ["https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/knockout/3.4.0/knockout-min.js"]
+]
+
+def cssProperties = [
+    // colors
+    '$clouds': '#ecf0f1',
+    '$darkerClouds': '#DFE3E4',
+    '$slightlyDarkerClouds': '#A0A4A5',
+    '$disabled': 'grey',
+    '$midnight': '#2c3e50',
+    '$darkerMidnight': '#1F3143',
+    '$darkestMidnight': '#152739',
+    '$lightBlue': '#2683f0',
+    // status colors
+    '$starting': 'rgba(0, 255, 0, .5)',
+    '$stopping': 'rgba(255, 0, 0, .5)',
+    // other
+    '$pageHeaderHeight': '50px'
+]
+
+def getBinFolder = {
+    def binFolder = new File("bin")
+    if(!binFolder.exists()) {
+        binFolder.mkdirs()
+    }
+    binFolder
+}
+
+def getPlaceholderMatches = { line -> line =~ /\$\{.*\}/ }
+def getPlaceholderName = { placeholder -> placeholder.trim()[2..-2]}
+
+def fillProperties = { line, dependencyModifier ->
+    getPlaceholderMatches(line).each {
+        def propertyName = getPlaceholderName(it)
+        def property = scriptProperties[propertyName]
+        if(propertyName == "content") {
+            property = file("bin/combined.js").text
+        } else if(propertyName == "versionForJs") {
+            property = "var SCRIPT_VERSION = \"${scriptProperties.version}\"\n"
+        } else if(property == null) {
+            throw new GradleScriptException("No property found for placeholder: ${it}", null)
+        }
+        if(propertyName == "externalDependencies") {
+            property = dependencyModifier(property)
+        }
+        logger.info "replacing ${it} with ${property}"
+        line = line.replace(it, property)
+    }
+    line
+}
+
+def replaceFromFile = { line, lineModifier={ text -> text } ->
+    def lineToWrite = line
+    def placeholderMatches = getPlaceholderMatches(line)
+    if(placeholderMatches) {
+        def placeholder = placeholderMatches[0]
+        lineToWrite = line.replace(placeholder, lineModifier(new File("${getPlaceholderName(placeholder)}").text))
+    }
+    lineToWrite
+}
+
+def combineStuff = { fileType, lineModifier={ text -> text } ->
+    new File(getBinFolder(), "combined.${fileType}").withWriter { writer ->
+        new File("src/shell/shell.${fileType}").eachLine { line ->
+            writer << "${replaceFromFile(line, lineModifier)}\n"
+        }
+    }
+}
+
+task combineHtml {
+    inputs.dir("src")
+    outputs.file('bin/combined.html')
+
+    doLast {
+        def html = file("src/shell/shell.html").text
+        def placeholders = getPlaceholderMatches(html)
+        while(placeholders) {
+            placeholders.each { placeholder ->
+                html = html.replace(placeholder, new File("${getPlaceholderName(placeholder)}").text)
+            }
+            placeholders = getPlaceholderMatches(html)
+        }
+        html = html.replaceAll(/>\s*</, '><').replaceAll(/\n/, '')
+        def index = 0
+        def lineLength = 300
+        def htmlLines = []
+        while(index < html.length()) {
+            def endIndex = Math.min(index + lineLength, html.length())
+            def nextLine = html.substring(index, endIndex)
+            if(nextLine.endsWith('\\')) {
+                // don't end with \' because it breaks the HTML part of the script
+                endIndex++
+                nextLine = html.substring(index, endIndex)
+            }
+            htmlLines.add(nextLine)
+            index += (endIndex - index)
+        }
+        html = "'${htmlLines.join("'\n+ '")}'"
+        new File(getBinFolder(), "combined.html").write("var html = ${html}\njQuery('body').removeClass().removeAttr('style').html(html);");
+    }
+}
+
+task combineCss {
+    inputs.dir("src")
+    outputs.file('bin/combined.css')
+
+    doLast {
+        def css = []
+        fileTree("src").include("**/*.css").collect({ cssFile ->
+            def cssPart = ''
+            cssFile.eachLine { line ->
+                (line =~ /\$\w+/).each {
+                    line = line.replace(it, cssProperties[it])
+                }
+                // exclude comment lines
+                if(!(line ==~ /.*\/.*/)) {
+                    cssPart += "${line.trim()} "
+                }
+            }
+            if(!cssPart.isEmpty()) {
+                if(cssPart.contains("'")) {
+                    throw new GradleScriptException("Cannot have single quotes in CSS.\nLine: ${cssPart}", null)
+                }
+                css.push("'${cssPart}'")
+            }
+        })
+        new File(getBinFolder(), 'combined.css').text = css.join(",\n")
+    }
+}
+
+task combineJs {
+    inputs.dir("src")
+    outputs.file('bin/combined.js')
+    dependsOn 'combineHtml'
+    dependsOn 'combineCss'
+
+    doLast {
+        // TODO: don't add tab for css
+        // add a tab because it looks better for both scripts
+        combineStuff("js", { text -> "    ${text.split('\n').join('\n    ')}"})
+    }
+}
+
+task createDevtoolsScript {
+    dependsOn 'combineJs'
+    inputs.dir("src")
+
+    doLast {
+        new File(getBinFolder(), "${scriptProperties.name.toLowerCase()}-devtools.js").withWriter { writer ->
+            new File("src/templates/devtools.js").eachLine { line ->
+                writer << fillProperties("${line}\n", { property -> "\"${property.collect { it }.join("\",\"")}\"" })
+            }
+        }
+    }
+}
+
+task createTampermonkeyScript {
+    dependsOn 'combineJs'
+    inputs.dir("src")
+
+    doLast {
+        new File(getBinFolder(), "${scriptProperties.name}.user.js").withWriter { writer ->
+            new File("src/templates/tampermonkey.js").eachLine { line ->
+                writer << fillProperties("${line}\n", { property -> property.collect { "// @require      ${it}"}.join("\n") })
+            }
+        }
+    }
+}
+
+task clean << {
+    delete("bin")
+}
+
+tasks.create('build').dependsOn 'createTampermonkeyScript','createDevtoolsScript'

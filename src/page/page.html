@@ -1,0 +1,88 @@
+<div class="service-page">
+    <input id="upload-configuration-input" type="file" style="display: none">
+    <!-- ko with: pageMessage -->
+    ${src/message/message.html}
+    <!-- /ko -->
+    <div class="service-page__header">
+        <div data-bind="click: clearAllActive" class="service-page__home-icon">
+            <i class="fa fa-home" aria-hidden="true"></i>
+        </div>
+        <div class="service-page__active-items">
+            <!-- ko with: activeApp -->
+            <div data-bind="click: $root.activateItem, text: name" class="service-page__active-item service-page__active-item--application"></div>
+            <!-- /ko -->
+            <!-- ko with: activeEnv -->
+            <div data-bind="click: $root.activateItem, text: name" class="service-page__active-item service-page__active-item--environment"></div>
+            <!-- /ko -->
+            <!-- ko with: activeHostGroup -->
+            <div data-bind="click: $root.activateItem, text: name"  class="service-page__active-item service-page__active-item--host-group"></div>
+            <!-- /ko -->
+            <!-- ko with: activeService -->
+            <div data-bind="text: name" class="service-page__active-item service-page__active-item--service"></div>
+            <!-- /ko -->
+        </div>
+        <!-- ko if: showRefreshIcon -->
+        <!-- ko if: showHostGroupHealth -->
+        <dv class="service-page__service-name">
+            <input data-bind="textInput: filterValue" placeholder="filter services..." autofocus="autofocus">
+        </dv>
+        <!-- /ko -->
+        <div data-bind="click: refresh, css: {\'service-page__refresh--refreshing\': isRefreshing}, attr: {title: refreshMessage}" class="service-page__refresh">
+            <!-- ko if: isRefreshing -->
+            <i class="fa fa-spinner fa-spin" aria-hidden="true"></i>
+            <!-- /ko -->
+            <!-- ko ifnot: isRefreshing -->
+            <i class="fa fa-refresh" aria-hidden="true"></i>
+            <!-- /ko -->
+        </div>
+        <!-- /ko -->
+        <div class="service-page__edit-options">
+            <!-- ko if: editMode -->
+            <div data-bind="click: downloadConfig" class="service-page__edit-element" title="Download configuration">
+                <i class="fa fa-download" aria-hidden="true"></i>
+            </div>
+            <div data-bind="click: uploadConfig" class="service-page__edit-element" title="Upload configuration">
+                <i class="fa fa-upload" aria-hidden="true"></i>
+            </div>
+            <div data-bind="click: toggleEdit" class="service-page__edit-element" title="Save changes">
+                <i class="fa fa-floppy-o" aria-hidden="true"></i>
+            </div>
+            <div data-bind="click: cancelEdit" class="service-page__edit-element" title="Cancel changes">
+                <i class="fa fa-times" aria-hidden="true"></i>
+            </div>
+            <!-- /ko -->
+            <!-- ko if: showHostGroupHealth -->
+            <!-- ko with: serviceController -->
+            ${src/service-controller/components/service-controller-header.html}
+            <!-- /ko -->
+            <!-- /ko -->
+            <!-- ko ifnot: activeService -->
+            <div data-bind="click: toggleEdit, css: {\'service-page__edit-element--toggled\': editMode}" class="service-page__edit-element" title="Toggle editing groups">
+                <i class="fa fa-cogs" aria-hidden="true"></i>
+            </div>
+            <!-- /ko -->
+        </div>
+    </div>
+    <div class="service-page__body">
+        <!-- ko if: showHostGroupHealth -->
+            ${src/page/page-body/page-host-group-health.html}
+            <!-- ko if: startStopUnlocked -->
+            <!-- ko with: serviceController -->
+            ${src/service-controller/service-controller.html}
+            <!-- /ko -->
+            <!-- /ko -->
+        <!-- /ko -->
+        <!-- ko if: showServiceActions -->
+        <!-- ko with: activeService -->
+            ${src/page/page-body/page-service-actions.html}
+        <!-- /ko -->
+        <!-- /ko -->
+        <!-- ko ifnot: showRefreshIcon -->
+            ${src/selections/selections.html}
+        <!-- /ko -->
+        <div class="service-page__version">
+            <span>Script version: </span>
+            <span data-bind="text: scriptVersion"></span>
+        </div>
+    </div>
+</div>
