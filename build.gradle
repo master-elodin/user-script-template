@@ -118,6 +118,9 @@ task combineCss {
             def cssPart = ''
             cssFile.eachLine { line ->
                 (line =~ /\$\w+/).each {
+                    if(cssProperties[it] == null) {
+                        throw new GradleScriptException("No CSS property found for argument ${it}", null)
+                    }
                     line = line.replace(it, cssProperties[it])
                 }
                 // exclude comment lines
